@@ -42,7 +42,7 @@ Or you can make a list containing the functions
 -}
 
 funs :: [Int -> Int]
-funs = undefined
+funs = [plus1, minus1]
 
 {-
 Taking Functions as Input
@@ -101,7 +101,7 @@ Haskell and almost every other language that you have seen.
 
 What is great about Haskell is that it is designed so that you don't have to
 worry about the evaluation order.  The substitution model of evaluation is
-*always* correct, and you can replace equals-for-equals *anywhere* in a
+\*always* correct, and you can replace equals-for-equals *anywhere* in a
 Haskell program to figure out its value. What this means is that you can
 could *also* understand the evaluation of `doTwice` using a more
 standard order of evaluation
@@ -172,12 +172,14 @@ Note the types of the above are `Int -> Int`.  That is, `plus10` and
 -}
 
 -- >>> plus10 3
+-- 13
 
 {-
 
 -}
 
 -- >>> plusn 10 3
+-- 13
 
 {-
 Partial Application
@@ -293,6 +295,9 @@ out its type in ghci!) to swap the order of the arguments.
 oneIntArg :: Int -> Bool
 oneIntArg = flip twoArg "a"
 
+oneIntArg2 :: Int -> Bool
+oneIntArg2 = \x -> twoArg x "a"
+
 {-
 Another solution relies on anonymous functions. (See if you can figure it
 out after reading the section below.)
@@ -355,7 +360,7 @@ Infix Operations and Sections
 -----------------------------
 
 In order to improve readability, Haskell allows you to use certain functions as
-*infix* operators: an infix operator is a function whose name is made of
+\*infix* operators: an infix operator is a function whose name is made of
 symbols. Wrapping it in parentheses makes it a regular identifier.
 My personal favorite infix operator is the application function,
 defined like this:
@@ -425,10 +430,13 @@ following test passes.
 -}
 
 singleton :: a -> [a]
-singleton = undefined
+singleton = (: [])
 
 singletonTest :: Test
 singletonTest = singleton True ~?= [True]
+
+-- >>> runTestTT singletonTest
+-- Counts {cases = 1, tried = 1, errors = 0, failures = 0}
 
 {-
 One exception to sections is subtraction. `(-1)` is the integer "minus one",
@@ -487,11 +495,14 @@ ex1 :: (a -> a) -> a -> a
 ex1 x y = doTwice doTwice x y
 
 {-
-
+    Apply x four times on y?
 -}
 
 ex1Test :: Test
-ex1Test = undefined
+ex1Test = ex1 (+ 1) 0 ~?= 4
+
+-- >>> runTestTT ex1Test
+-- Counts {cases = 1, tried = 1, errors = 0, failures = 0}
 
 {-
 Polymorphic Data Structures
@@ -648,14 +659,14 @@ map f (x : xs) = f x : map f xs
 The type of `map` tells us exactly what it does: it takes an `a -> b`
 transformer and list of `a` values, and transforms each `a` value to return
 a list of `b` values.  We can now safely reuse the pattern, by
-*instantiating* the transformer with different specific operations.
+\*instantiating* the transformer with different specific operations.
 -}
 
 toUpperString' :: String -> String
 toUpperString' xs = map toUpper xs
 
 shiftPoly' :: XY -> Polygon -> Polygon
-shiftPoly' d = undefined
+shiftPoly' d xs = map (shiftXY d) xs
 
 {-
 Much better.  But let's make sure our refactoring didn't break anything!
@@ -701,7 +712,7 @@ We can write this more cleanly with map, of course:
 -}
 
 listIncr' :: [Int] -> [Int]
-listIncr' = undefined
+listIncr' xs = map (+ 1) xs
 
 {-
 Computation Pattern: Folding
@@ -733,8 +744,8 @@ into parameters, and lo!
 -}
 
 foldr :: (a -> b -> b) -> b -> [a] -> b
-foldr _f base [] = base
-foldr f base (x : xs) = x `f` foldr f base xs
+foldr _ base [] = base
+foldr f base (x : xs) = f x (foldr f base xs)
 
 {-
 Now, each of the individual functions are just specific instances of the
@@ -777,18 +788,25 @@ from our list-length function?
     len []     = 0
     len (x:xs) = 1 + len xs
 -}
+acc :: a -> Int -> Int
+acc _ x = 1 + x
 
 len' :: [a] -> Int
-len' = undefined
+len' xs = foldr acc 0 xs
 
 {-
 Once you have defined `len` in this way, see if you can trace how it
 works on a small example:
 
 ~~~~~~~~~
-len' (1:2:[]) == ...
-       ...
-              == 2
+len' (1:2:3:[]) == foldr acc 0 [1,2]
+                == acc 1 (foldr acc 0 [2])
+                == acc 1 (acc 2 (foldr acc 0 []))
+                == acc 1 (acc 2 (0))
+                == acc 1 (1 + 0)
+                == acc 1 1
+                == 1 + 1
+                == 2
 ~~~~~~~~~
 
 Or, how would you use foldr to eliminate the recursion from this?
@@ -796,11 +814,20 @@ Or, how would you use foldr to eliminate the recursion from this?
 
 factorial :: Int -> Int
 factorial 0 = 1
-factorial n = n * factorial (n -1)
+factorial n = n * factorial (n - 1)
+
+decList :: Int -> [Int]
+decList 0 = []
+decList n = n : decList (n - 1)
 
 factorial' :: Int -> Int
-factorial' n = undefined
+factorial' n = foldr (*) 1 (decList n)
 
+-- >>> decList 5
+-- [5,4,3,2,1]
+
+-- >>> factorial' 6
+-- 720
 {-
 OK, one more.  The standard list library function `filter` has this
 type:
@@ -824,7 +851,10 @@ testFilter =
 Can we implement filter using foldr?  Sure!
 -}
 
-filter pred = undefined
+filter pred = foldr (\x xs -> if pred x then x : xs else xs) []
+
+-- >>> filter (>10) [1 .. 20]
+-- [11,12,13,14,15,16,17,18,19,20]
 
 runTests :: IO Counts
 runTests = runTestTT $ TestList [testMap, testFoldr, testFilter]
@@ -848,7 +878,7 @@ and worse, there is potential for making silly off-by-one type errors
 if you re-jigger the basic strategy every time.
 
 As an added bonus, it can be quite useful and profitable to
-*parallelize* and *distribute* the computation patterns (like `map`
+\*parallelize* and *distribute* the computation patterns (like `map`
 and `foldr`) in just one place, thereby allowing arbitrary hundreds or
 thousands of instances to benefit in a single shot! Haskell doesn't
 do this out of the box, but these ideas readily translate to languages
